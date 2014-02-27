@@ -1,0 +1,66 @@
+#!/usr/bin/env python
+from optparse import OptionParser
+from glob import glob
+from os.path import join
+import multiprocessing
+import os, errno,sys
+from tempfile import mkdtemp
+from multiprocessing import Pool
+from commands import getstatusoutput
+
+# Directory structure is pending/<release>/<architecture>/<workflow>
+def runWorkflow(workflow):
+  workflow.update({
+    "workdir": mkdtemp(),
+    "pending_dir": "{results_base}/pending/{release}/{arch}".format(**workflow),
+    "progress_dir": "{results_base}/progress/{release}/{arch}".format(**workflow),
+    "done_dir": "{results_base}/done/{arch}/{release}".format(**workflow)
+  })
+  workflow.update({
+    "pending_job": "{pending_dir}/{id}".format(**workflow),
+    "progress_job": "{progress_dir}/{id}".format(**workflow),
+    "done_job": "{done_dir}/{id}".format(**workflow),
+  })
+  cmd = ("set -e\n"
+         "set -x\n"
+         "mkdir -p {progress_dir}\n"
+         "mkdir -p {done_dir}\n"
+         "rm -rf {pending_job}\n"
+         "ln -s {workdir} {progress_job}\n"
+         "cd {workdir}\n"
+         "export SCRAM_ARCH={arch}\n"
+         "scram project -n sw {release}\n"
+         "pushd sw\n"
+         "  eval `scram run -sh`\n"
+         "popd\n"
+         "runTheMatrix.py -i all -l {id} >log.txt 2>&1 || true\n"
+         "rm -rf sw\n"
+         "rm -rf {done_job}\n"
+         "mv {workdir} {done_job}\n"
+         "rm -rf {progress_job}"
+        ).format(**workflow)
+  status, out = getstatusoutput(cmd)
+  print out
+  
+if __name__ == "__main__":
+  parser = OptionParser(usage="run-workflow-validation <directory>")
+  parser.add_option("-j", dest="jobs", default=multiprocessing.cpu_count(), type=int)
+  opts, args = parser.parse_args()
+  if not args:
+    parser.error("Please specify directory")
+  results_base = args[0]
+  pending_glob = join(results_base, "pending/*/*/*")
+  progress_glob = join(results_base, "progress/*/*/*")
+  dirs = [x.split("/pending/")[1] for x in glob(pending_glob)]
+  busy_slots = len([x for x in glob(progress_glob)])
+  print opts.jobs - busy_slots
+  workflows = [dict(zip(["release", "arch", "id", "results_base"], x.split("/") + [results_base])) 
+               for x in dirs][0:opts.jobs - busy_slots]
+  print "\n".join(w["id"] for w in workflows)
+  p = Pool(opts.jobs)
+
+  try:
+    p.map(runWorkflow, workflows)
+  except KeyboardInterrupt:
+    p.terminate()
+    sys.exit(1)
