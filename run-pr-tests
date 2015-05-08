@@ -1,13 +1,9 @@
 #!/bin/sh -ex
 
-# In case we have kerberos and aklog reset token every time you run.
-#if [ ! X`which aklog` = X ]; then
-#  aklog
-#fi
-#if [ ! X`which kinit` = X ]; then
-#  kinit cmsbuild@CERN.CH -k -t ~/private/cmsbuild.keytab
-#fi
 klist
+if [ "X$HOME" = X ]; then
+   export HOME=/home/jenkins
+fi
 
 # to not modify the behavior of other scripts that use the AUTO_POST_MESSAGE parameter
 if [ "X$AUTO_POST_MESSAGE" != Xtrue ]; then
