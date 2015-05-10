@@ -1,5 +1,12 @@
 #!/bin/sh -ex
 
+# In case we have kerberos and aklog reset token every time you run.
+if [ ! X`which aklog` = X ]; then
+  aklog
+fi
+if [ ! X`which kinit` = X ] && [ -f ~/private/cmsbuild.keytab ]; then
+  kinit cmsbuild@CERN.CH -k -t ~/private/cmsbuild.keytab
+fi
 klist
 if [ "X$HOME" = X ]; then
    export HOME=/home/jenkins
